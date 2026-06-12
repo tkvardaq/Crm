@@ -1,0 +1,24 @@
+{
+  "name": "@crm/bull-board",
+  "version": "0.1.0",
+  "private": true,
+  "main": "src/index.ts",
+  "scripts": {
+    "start": "ts-node src/index.ts",
+    "dev": "ts-node-dev src/index.ts"
+  },
+  "dependencies": {
+    "@bull-board/api": "^5.0.0",
+    "@bull-board/express": "^5.0.0",
+    "bullmq": "^5.0.0",
+    "express": "^4.18.0",
+    "ioredis": "^5.4.0",
+    "@crm/shared": "file:../../packages/shared"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.0",
+    "ts-node": "^10.9.0",
+    "@types/node": "^20.10.0",
+    "@types/express": "^4.17.21"
+  }
+}

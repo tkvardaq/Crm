@@ -1,0 +1,42 @@
+FROM node:20-alpine AS base
+RUN apk add --no-cache libc6-compat
+WORKDIR /app
+
+FROM base AS deps
+COPY package.json package-lock.json* ./
+COPY packages/database/package.json ./packages/database/
+COPY packages/shared/package.json ./packages/shared/
+COPY packages/email-engine/package.json ./packages/email-engine/
+COPY packages/scraper/package.json ./packages/scraper/
+COPY packages/enrichment/package.json ./packages/enrichment/
+COPY packages/ai-client/package.json ./packages/ai-client/
+ARG WORKER_NAME
+COPY workers/${WORKER_NAME}/package.json ./workers/${WORKER_NAME}/
+RUN npm install --omit=dev
+
+FROM base AS builder
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+RUN npx prisma generate --schema=packages/database/schema.prisma
+RUN npm run build --workspace=@crm/shared 2>/dev/null || true
+RUN npm run build --workspace=@crm/database 2>/dev/null || true
+ARG WORKER_NAME
+RUN if [ -f "workers/${WORKER_NAME}/tsconfig.json" ]; then \
+      cd workers/${WORKER_NAME} && npx tsc --outDir dist; \
+    fi
+
+FROM base AS runner
+ENV NODE_ENV=production
+ARG WORKER_NAME
+WORKDIR /app
+RUN addgroup -g 1001 -S appgroup && adduser -S appuser -u 1001 -G appgroup
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/packages ./packages
+COPY --from=builder /app/workers/${WORKER_NAME} ./workers/${WORKER_NAME}
+COPY --from=builder /app/packages/database/schema.prisma ./packages/database/schema.prisma
+
+WORKDIR /app/workers/${WORKER_NAME}
+RUN chown -R appuser:appgroup /app
+USER appuser
+
+CMD ["node", "dist/index.js"]

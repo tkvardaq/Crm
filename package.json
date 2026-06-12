@@ -1,0 +1,25 @@
+{
+  "name": "crm-tool",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "workers/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace=@crm/web",
+    "build": "npm run build --workspace=@crm/web",
+    "build:packages": "npm run build --workspace=@crm/shared && npm run build --workspace=@crm/database && npm run build --workspace=@crm/enrichment",
+    "typecheck": "turbo run typecheck",
+    "lint": "turbo run lint",
+    "db:migrate": "npm run db:migrate --workspace=@crm/database",
+    "db:generate": "npm run db:generate --workspace=@crm/database"
+  },
+  "devDependencies": {
+    "bcryptjs": "^3.0.3",
+    "turbo": "^2.3.0",
+    "typescript": "^5.5.0"
+  },
+  "packageManager": "npm@11.9.0"
+}

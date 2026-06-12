@@ -1,0 +1,279 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: crm-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-crm_db}
+      POSTGRES_USER: ${POSTGRES_USER:-admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-pgvector.sql:/docker-entrypoint-initdb.d/init-pgvector.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-admin} -d ${POSTGRES_DB:-crm_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1.0"
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: crm-redis
+    ports:
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    command: >
+      redis-server
+      --appendonly yes
+      --appendfsync everysec
+      --requirepass ${REDIS_PASSWORD:-changeme}
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-changeme}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.5"
+    restart: unless-stopped
+
+  backup:
+    image: pgvector/pgvector:pg16
+    container_name: crm-backup
+    environment:
+      PGHOST: postgres
+      PGUSER: ${POSTGRES_USER:-admin}
+      PGPASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      PGDATABASE: ${POSTGRES_DB:-crm_db}
+    volumes:
+      - backup_data:/backups
+    entrypoint: >
+      sh -c "while true; do
+        pg_dump -Fc > /backups/crm_backup_$$(date +%Y%m%d_%H%M%S).dump;
+        find /backups -name '*.dump' -mtime +7 -delete;
+        sleep 86400;
+      done"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: "0.25"
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: crm-web
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1.0"
+    restart: unless-stopped
+
+  email-dispatcher:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+      args:
+        WORKER_NAME: email-dispatcher
+    container_name: crm-email-dispatcher
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.5"
+    restart: unless-stopped
+
+  imap-sync:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+      args:
+        WORKER_NAME: imap-sync
+    container_name: crm-imap-sync
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.5"
+    restart: unless-stopped
+
+  dns-checker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+      args:
+        WORKER_NAME: dns-checker
+    container_name: crm-dns-checker
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: "0.25"
+    restart: unless-stopped
+
+  decay-tracker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+      args:
+        WORKER_NAME: decay-tracker
+    container_name: crm-decay-tracker
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: "0.25"
+    restart: unless-stopped
+
+  warmup:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+      args:
+        WORKER_NAME: warmup
+    container_name: crm-warmup
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: "0.25"
+    restart: unless-stopped
+
+  ai-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+      args:
+        WORKER_NAME: ai-worker
+    container_name: crm-ai-worker
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.5"
+    restart: unless-stopped
+
+  scraper-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+      args:
+        WORKER_NAME: scraper-worker
+    container_name: crm-scraper-worker
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.5"
+    restart: unless-stopped
+
+  enrichment-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+      args:
+        WORKER_NAME: enrichment-worker
+    container_name: crm-enrichment-worker
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.5"
+    restart: unless-stopped
+
+  bull-board:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+      args:
+        WORKER_NAME: bull-board
+    container_name: crm-bull-board
+    ports:
+      - "127.0.0.1:${BULL_BOARD_PORT:-3010}:3010"
+    env_file: .env
+    depends_on:
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: "0.25"
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+  backup_data:
