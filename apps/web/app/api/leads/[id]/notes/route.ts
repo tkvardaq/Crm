@@ -54,6 +54,9 @@ export async function POST(
   if (!content || typeof content !== "string") {
     return NextResponse.json({ error: "Content is required" }, { status: 400 });
   }
+  if (content.length > 50_000) {
+    return NextResponse.json({ error: "Note too long (max 50,000 chars)" }, { status: 400 });
+  }
 
   const note = await prismaClient.note.create({
     data: {

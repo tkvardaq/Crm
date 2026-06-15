@@ -4,6 +4,7 @@ import { QueueName } from "@crm/shared";
 import Imap from "imap";
 import { simpleParser } from "mailparser";
 import IORedis from "ioredis";
+import { toPlainText } from "@crm/email-engine";
 
 const REDIS_URL = process.env.REDIS_URL || "redis://localhost:6379";
 const connection = new IORedis(REDIS_URL, { maxRetriesPerRequest: null });
@@ -45,7 +46,7 @@ function openImapConnection(inbox: {
 }
 
 async function processImapSync(job: Job<ImapSyncJobData>) {
-  const { inboxId } = job.data;
+  const { inboxId, workspaceId } = job.data;
 
   const inbox = await prismaClient.connectedInbox.findFirst({
     where: { id: inboxId, workspaceId },
@@ -106,7 +107,7 @@ async function processImapSync(job: Job<ImapSyncJobData>) {
 
 						const fromAddr = parsed.from?.value?.[0]?.address || "";
 						const subject = parsed.subject || "";
-						const bodyText = parsed.text || "";
+						const bodyText = toPlainText(parsed.text || parsed.html?.toString() || "");
 						const messageId = parsed.messageId || null;
 
           const lead = await prismaClient.lead.findFirst({

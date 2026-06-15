@@ -2,22 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { prismaClient } from "@crm/database";
 import { Queue } from "bullmq";
 import { QueueName } from "@crm/shared";
+import { parseRedisUrl } from "@crm/shared";
 
 const REDIS_URL = process.env.REDIS_URL || "redis://localhost:6379";
-
-function parseRedisUrl(url: string) {
-	try {
-		const parsed = new URL(url);
-		return {
-			host: parsed.hostname || "localhost",
-			port: Number(parsed.port) || 6379,
-			password: parsed.password || undefined,
-			db: parsed.pathname ? Number(parsed.pathname.slice(1)) || 0 : 0,
-		};
-	} catch {
-		return { host: "localhost", port: 6379, password: undefined, db: 0 };
-	}
-}
 
 export async function POST(req: NextRequest) {
 	const authHeader = req.headers.get("authorization");

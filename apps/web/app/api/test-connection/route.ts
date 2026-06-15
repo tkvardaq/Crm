@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
   };
 
   const isValidCiphertext = (s: string) =>
-    s && s.split(":").length === 4 && s.split(":").every((p) => p.length === 32);
+    s && s.split(":").length === 4 && s.split(":").every((p) => p.length >= 32);
   const password = (encryptedPass && isValidCiphertext(encryptedPass))
     ? decrypt(encryptedPass)
     : (pass ?? "");

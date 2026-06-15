@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
-import { rateLimitAuth, rateLimitApi } from "@/lib/rate-limit";
+import { rateLimitAuth, rateLimitApi } from "@/lib/rate-limit-edge";
 
 const CSRF_SAFE_METHODS = ["GET", "HEAD", "OPTIONS"];
 
@@ -43,12 +43,12 @@ export async function middleware(request: NextRequest) {
   const isCronRoute = pathname.startsWith("/api/cron/");
 
   if (isAuthRoute || pathname === "/login" || pathname === "/register") {
-    const result = rateLimitAuth(ip);
+    const result = await rateLimitAuth(ip);
     if (!result.success) {
       return NextResponse.json({ error: "Too many requests" }, { status: 429 });
     }
   } else if (pathname.startsWith("/api/") && !isCronRoute) {
-    const result = rateLimitApi(ip);
+    const result = await rateLimitApi(ip);
     if (!result.success) {
       return NextResponse.json({ error: "Too many requests" }, { status: 429 });
     }
@@ -57,6 +57,12 @@ export async function middleware(request: NextRequest) {
   const publicPaths = ["/login", "/register"];
   const publicApiPrefixes = ["/api/auth/"];
   const isPublic = publicPaths.includes(pathname) || publicApiPrefixes.some((p) => pathname.startsWith(p));
+
+  if (!isPublic && !CSRF_SAFE_METHODS.includes(request.method)) {
+    if (!validateOrigin(request)) {
+      return NextResponse.json({ error: "Invalid origin" }, { status: 403 });
+    }
+  }
 
   if (isPublic) return NextResponse.next();
 
@@ -69,10 +75,6 @@ export async function middleware(request: NextRequest) {
     const loginUrl = new URL("/login", request.url);
     loginUrl.searchParams.set("callbackUrl", pathname);
     return NextResponse.redirect(loginUrl);
-  }
-
-  if (!validateOrigin(request)) {
-    return NextResponse.json({ error: "Invalid origin" }, { status: 403 });
   }
 
   return NextResponse.next();

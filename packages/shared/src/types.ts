@@ -162,7 +162,7 @@ export interface DealRecord {
   pipelineStageId: string;
   title: string;
   value: number;
-  expectedCloseDate: string | null;
+  expectedCloseDate: Date | null;
   notes: string | null;
   createdAt: Date;
   updatedAt: Date;

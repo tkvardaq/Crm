@@ -41,31 +41,37 @@ async function processDecayTrack(job: Job<DecayTrackJobData>) {
 
   let decayed = 0;
 
-  for (const lead of leads) {
-    const daysSinceUpdate = Math.floor(
-      (Date.now() - lead.updatedAt.getTime()) / (24 * 60 * 60 * 1000)
-    );
+  const updates = leads
+    .map((lead) => {
+      const daysSinceUpdate = Math.floor(
+        (Date.now() - lead.updatedAt.getTime()) / (24 * 60 * 60 * 1000)
+      );
+      if (daysSinceUpdate < 1) return null;
+      const decayPerDay = DECAY_RULES[lead.status] ?? -1;
+      if (decayPerDay === 0) return null;
+      const totalDecay = decayPerDay * daysSinceUpdate;
+      const newScore = Math.max(MIN_SCORE, Math.min(MAX_SCORE, lead.score + totalDecay));
+      if (newScore === lead.score) return null;
+      return { id: lead.id, newScore, status: lead.status };
+    })
+    .filter((u): u is { id: string; newScore: number; status: string } => u !== null);
 
-    if (daysSinceUpdate < 1) continue;
+  if (updates.length) {
+    const { Prisma } = require("@prisma/client");
+    await prismaClient.$executeRaw`
+      UPDATE leads SET score = CASE id
+        ${Prisma.join(updates.map((u) => Prisma.sql`WHEN ${u.id}::uuid THEN ${u.newScore}`))}
+      END, updated_at = NOW()
+      WHERE id IN (${Prisma.join(updates.map((u) => Prisma.sql`${u.id}::uuid`))})
+    `;
+    decayed = updates.length;
 
-    const decayPerDay = DECAY_RULES[lead.status] ?? -1;
-    if (decayPerDay === 0) continue;
-
-    const totalDecay = decayPerDay * daysSinceUpdate;
-    const newScore = Math.max(MIN_SCORE, Math.min(MAX_SCORE, lead.score + totalDecay));
-
-    if (newScore === lead.score) continue;
-
-    await prismaClient.lead.update({
-      where: { id: lead.id },
-      data: { score: newScore },
-    });
-
-    decayed++;
-
-    if (newScore <= COLD_THRESHOLD && lead.status === "contacted") {
-      await prismaClient.lead.update({
-        where: { id: lead.id },
+    const staleIds = updates
+      .filter((u) => u.newScore <= COLD_THRESHOLD && u.status === "contacted")
+      .map((u) => u.id);
+    if (staleIds.length) {
+      await prismaClient.lead.updateMany({
+        where: { id: { in: staleIds } },
         data: { status: "raw" },
       });
     }

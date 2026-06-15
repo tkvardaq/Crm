@@ -1,14 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prismaClient } from "@crm/database";
+import { Prisma } from "@prisma/client";
 
-export async function GET(req: NextRequest) {
+export async function POST(req: NextRequest) {
   const authHeader = req.headers.get("authorization");
   const cronSecret = process.env.CRON_SECRET;
   if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const staleRawEnriched = await prismaClient.$executeRawUnsafe(`
+  const staleRawEnriched = await prismaClient.$executeRaw(Prisma.sql`
     UPDATE leads
     SET score = GREATEST(score - 10, 0)
     WHERE status IN ('raw', 'enriched')
@@ -16,7 +17,7 @@ export async function GET(req: NextRequest) {
       AND score > 0
   `);
 
-  const staleContacted = await prismaClient.$executeRawUnsafe(`
+  const staleContacted = await prismaClient.$executeRaw(Prisma.sql`
     UPDATE leads
     SET score = GREATEST(score - 5, 0)
     WHERE id IN (

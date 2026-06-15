@@ -44,17 +44,22 @@ createBullBoard({
 
 const app = express();
 
-app.use("/", (req, res, next) => {
-  const secret = process.env.BULL_BOARD_SECRET;
-  if (secret) {
-    const valid = req.headers["x-bull-board-secret"] === secret;
-    if (!valid) {
-      res.setHeader("WWW-Authenticate", "Basic");
-      return res.status(401).send("Unauthorized");
-    }
-  }
-  next();
-});
+import basicAuth from "express-basic-auth";
+
+const boardUser = process.env.BULL_BOARD_USER;
+const boardPass = process.env.BULL_BOARD_PASS;
+
+if (!boardUser || !boardPass) {
+  throw new Error("[bull-board] BULL_BOARD_USER and BULL_BOARD_PASS environment variables must be set. The board is unprotected.");
+} else {
+  app.use(
+    basicAuth({
+      users: { [boardUser]: boardPass },
+      challenge: true,
+      realm: "CRM Bull Board",
+    })
+  );
+}
 
 app.use("/", serverAdapter.getRouter());
 

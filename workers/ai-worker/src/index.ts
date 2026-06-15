@@ -3,6 +3,7 @@ import { prismaClient } from "@crm/database";
 import { QueueName, InteractionSentiment } from "@crm/shared";
 import { NVIDIANimClient } from "@crm/ai-client";
 import IORedis from "ioredis";
+import { Prisma } from "@prisma/client";
 
 const REDIS_URL = process.env.REDIS_URL || "redis://localhost:6379";
 const connection = new IORedis(REDIS_URL, { maxRetriesPerRequest: null });
@@ -106,20 +107,13 @@ async function processAiExtract(job: Job<AiExtractJobData>) {
         data: { status: "cancelled" },
       });
     } else if (sentiment === "oof") {
-      const pendingEntries = await prismaClient.campaignQueue.findMany({
-        where: { leadId: comm.leadId, workspaceId, status: "pending" },
-        select: { id: true, scheduledFor: true },
-      });
-      const threeDays = 3 * 24 * 60 * 60 * 1000;
-      for (const entry of pendingEntries) {
-        const newDate = new Date(
-          (entry.scheduledFor ? new Date(entry.scheduledFor).getTime() : Date.now()) + threeDays
-        );
-        await prismaClient.campaignQueue.update({
-          where: { id: entry.id, workspaceId },
-          data: { scheduledFor: newDate },
-        });
-      }
+      await prismaClient.$executeRaw(Prisma.sql`
+        UPDATE campaign_queue
+        SET scheduled_for = scheduled_for + INTERVAL '3 days'
+        WHERE lead_id = ${comm.leadId}::uuid
+          AND workspace_id = ${workspaceId}::uuid
+          AND status = 'pending'
+      `);
     }
   }
 

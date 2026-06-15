@@ -16,6 +16,7 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const status = searchParams.get("status");
   const cursor = searchParams.get("cursor");
+  const scrapeJobId = searchParams.get("scrapeJobId");
   const rawLimit = parseInt(searchParams.get("limit") || "50", 10);
   const limit = Math.max(1, Math.min(100, isNaN(rawLimit) ? 50 : rawLimit));
 
@@ -23,6 +24,7 @@ export async function GET(req: NextRequest) {
     where: {
       workspaceId,
       ...(status ? { status } : {}),
+      ...(scrapeJobId ? { scrapeJobId } : {}),
     },
     include: { company: true },
     orderBy: { createdAt: "desc" },

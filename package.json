@@ -21,5 +21,9 @@
     "turbo": "^2.3.0",
     "typescript": "^5.5.0"
   },
-  "packageManager": "npm@11.9.0"
+  "packageManager": "npm@11.9.0",
+  "dependencies": {
+    "@prisma/client": "^5.22.0",
+    "prisma": "^5.22.0"
+  }
 }

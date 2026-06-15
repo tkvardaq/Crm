@@ -47,7 +47,7 @@ interface Deal {
   id: string;
   title: string;
   value: number;
-  expectedCloseDate: string | null;
+  expectedCloseDate: Date | null;
   lead: { email: string; firstName: string | null; lastName: string | null };
 }
 
@@ -129,16 +129,16 @@ export default function DashboardPage() {
 
   const repliedLeads = leads.filter((l) => l.status === "replied").slice(0, 5);
 
-  const thirtyDaysFromNow = new Date();
-  thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
-  const dealsClosingSoon = deals
-    .filter((d) => {
-      if (!d.expectedCloseDate) return false;
-      const closeDate = new Date(d.expectedCloseDate);
-      return closeDate <= thirtyDaysFromNow && closeDate >= now;
-    })
-    .sort((a, b) => new Date(a.expectedCloseDate!).getTime() - new Date(b.expectedCloseDate!).getTime())
-    .slice(0, 5);
+   const thirtyDaysFromNow = new Date();
+   thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
+   const dealsClosingSoon = deals
+     .filter((d) => {
+       if (!d.expectedCloseDate) return false;
+       const closeDate = d.expectedCloseDate;
+       return closeDate <= thirtyDaysFromNow && closeDate >= now;
+     })
+     .sort((a, b) => (a.expectedCloseDate!.getTime() - b.expectedCloseDate!.getTime()))
+     .slice(0, 5);
 
   const recentMessages = messages.slice(0, 10);
 
@@ -298,7 +298,7 @@ export default function DashboardPage() {
                     <div className="flex items-center justify-between mt-1">
                       <span className="text-sm text-emerald-600 font-medium">${deal.value.toLocaleString()}</span>
                       <span className="text-xs text-slate-400">
-                        {deal.expectedCloseDate ? formatDate(deal.expectedCloseDate) : "—"}
+                        {deal.expectedCloseDate ? formatDate(deal.expectedCloseDate.toISOString()) : "—"}
                       </span>
                     </div>
                   </div>

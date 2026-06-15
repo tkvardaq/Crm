@@ -50,13 +50,19 @@ export async function POST(req: NextRequest) {
   let mxRecords = false;
   let dnsError = false;
   try {
-    const res = await fetch(`https://dns.google/resolve?name=${domain}&type=MX`);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 5000);
+    const res = await fetch(`https://dns.google/resolve?name=${domain}&type=MX`, {
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
     if (!res.ok) throw new Error(`DNS lookup failed: ${res.status}`);
     const data = await res.json();
     mxRecords = !!(data.Answer && data.Answer.length > 0);
-  } catch (err) {
+  } catch (err: any) {
     dnsError = true;
-    console.error(`[verify-email] DNS lookup failed for ${domain}:`, err);
+    if (err.name === "AbortError") console.warn(`[verify-email] Timed out for ${domain}`);
+    else console.error(`[verify-email] DNS lookup failed for ${domain}:`, err);
     mxRecords = false;
   }
 

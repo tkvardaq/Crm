@@ -13,11 +13,11 @@ export async function GET(req: NextRequest) {
   const workspaceId = session.user.workspaceId;
   const stages = await prismaClient.pipelineStage.findMany({
     where: { workspaceId },
-    include: { deals: true },
+    include: { _count: { select: { deals: true } } },
     orderBy: { sortOrder: "asc" },
   });
 
-  return NextResponse.json(stages);
+  return NextResponse.json(stages.map((s) => ({ ...s, dealCount: s._count.deals })));
 }
 
 export async function POST(req: NextRequest) {

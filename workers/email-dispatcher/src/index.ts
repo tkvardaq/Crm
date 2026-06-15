@@ -1,7 +1,7 @@
 import { Worker, Job } from "bullmq";
 import { prismaClient } from "@crm/database";
 import { QueueName } from "@crm/shared";
-import { createTransport, generateSpintaxVariant, getWeightedRandomIndex } from "@crm/email-engine";
+import { createTransport, generateSpintaxVariant, getWeightedRandomIndex, toSafeHtml } from "@crm/email-engine";
 import IORedis from "ioredis";
 
 const REDIS_URL = process.env.REDIS_URL || "redis://localhost:6379";
@@ -9,6 +9,15 @@ const MAX_RETRY = 3;
 const BACKOFF_MS = 5000;
 
 const connection = new IORedis(REDIS_URL, { maxRetriesPerRequest: null });
+
+const transportCache = new Map<string, ReturnType<typeof createTransport>>();
+
+function getOrCreateTransport(inbox: { id: string; smtpHost: string; smtpPort: number; smtpUser: string; smtpPassEncrypted: string }) {
+  if (!transportCache.has(inbox.id)) {
+    transportCache.set(inbox.id, createTransport(inbox));
+  }
+  return transportCache.get(inbox.id)!;
+}
 
 async function processEmailDispatch(job: Job) {
   const { campaignQueueId } = job.data;
@@ -65,52 +74,48 @@ async function processEmailDispatch(job: Job) {
 
   const body = generateSpintaxVariant(variant.bodySpintax, templateVars);
 
-	const allInboxes = await prismaClient.connectedInbox.findMany({
-		where: {
-			workspaceId: queueEntry.workspaceId,
-			isActive: true,
-		},
-		orderBy: { dailySentCount: "asc" },
+// Atomically claim one inbox slot (increment count within the SELECT transaction)
+	const claimed = await prismaClient.$queryRaw<{ id: string }[]>`
+		UPDATE connected_inboxes
+		SET daily_sent_count = daily_sent_count + 1
+		WHERE workspace_id = ${queueEntry.workspaceId}
+		  AND is_active = true
+		  AND daily_sent_count < max_daily_limit
+		  AND id = (
+			SELECT id FROM connected_inboxes
+			WHERE workspace_id = ${queueEntry.workspaceId}
+			  AND is_active = true
+			  AND daily_sent_count < max_daily_limit
+			ORDER BY daily_sent_count ASC
+			LIMIT 1
+			FOR UPDATE SKIP LOCKED
+		  )
+		RETURNING id
+	`;
+
+	if (claimed.length === 0) {
+		throw new Error("No available inbox with remaining daily capacity");
+	}
+
+	const inbox = await prismaClient.connectedInbox.findUniqueOrThrow({
+		where: { id: claimed[0].id },
 	});
-	const inboxes = allInboxes.filter(i => i.dailySentCount < i.maxDailyLimit).slice(0, 1);
 
-  if (inboxes.length === 0) {
-    throw new Error("No available inbox with remaining daily capacity");
-  }
-
-  const inbox = inboxes[0];
-
-	let transport;
-  try {
-    transport = createTransport({
-      smtpHost: inbox.smtpHost,
-      smtpPort: inbox.smtpPort,
-      smtpUser: inbox.smtpUser,
-      smtpPassEncrypted: inbox.smtpPassEncrypted,
-    });
-
+	const transport = getOrCreateTransport(inbox);
     await transport.sendMail({
       from: inbox.email,
       to: lead.email,
       subject,
       text: body,
-      html: body.replace(/\n/g, "<br>"),
+      html: toSafeHtml(body),
     });
-  } finally {
-    if (transport) {
-      try { await transport.close(); } catch {}
-    }
-  }
 
   await prismaClient.$transaction([
     prismaClient.campaignQueue.update({
       where: { id: campaignQueueId },
       data: { status: "dispatched" },
     }),
-    prismaClient.connectedInbox.update({
-      where: { id: inbox.id },
-      data: { dailySentCount: { increment: 1 } },
-    }),
+
     prismaClient.lead.update({
       where: { id: lead.id },
       data: { status: "contacted" },
@@ -129,6 +134,7 @@ async function processEmailDispatch(job: Job) {
         channel: "email",
         subject,
         bodyText: body,
+        sentAt: new Date(),
         sentiment: null,
       },
     }),
@@ -171,6 +177,10 @@ process.on("SIGTERM", async () => {
   console.log("[email-dispatcher] SIGTERM received, shutting down gracefully...");
   await worker.close();
   await connection.quit();
+  for (const transport of transportCache.values()) {
+    try { await transport.close(); } catch {}
+  }
+  transportCache.clear();
   await prismaClient.$disconnect().catch(() => {});
   process.exit(0);
 });
@@ -179,6 +189,10 @@ process.on("SIGINT", async () => {
   console.log("[email-dispatcher] SIGINT received, shutting down gracefully...");
   await worker.close();
   await connection.quit();
+  for (const transport of transportCache.values()) {
+    try { await transport.close(); } catch {}
+  }
+  transportCache.clear();
   await prismaClient.$disconnect().catch(() => {});
   process.exit(0);
 });

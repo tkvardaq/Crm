@@ -1,11 +1,36 @@
 import nodemailer from "nodemailer";
 import { decrypt } from "@crm/database";
+import sanitizeHtml from "sanitize-html";
+
+const SAFE_HTML_OPTIONS: sanitizeHtml.IOptions = {
+  allowedTags: ["p", "br", "b", "i", "strong", "em", "a", "ul", "ol", "li", "blockquote"],
+  allowedAttributes: { a: ["href"] },
+  allowedSchemes: ["https", "mailto"],
+};
+
+/** Converts plain-text body to safe HTML. Strips all script/event tags. */
+export function toSafeHtml(text: string): string {
+  return sanitizeHtml(text.replace(/\n/g, "<br>"), SAFE_HTML_OPTIONS);
+}
+
+/** Strips ALL tags — use for storing plain-text copies of inbound emails. */
+export function toPlainText(html: string): string {
+  return sanitizeHtml(html, { allowedTags: [], allowedAttributes: {} });
+}
 
 export function parseSpintax(text: string): string {
-  return text.replace(/\{([^}]+)\}/g, (_, choices) => {
-    const opts = choices.split("|");
-    return opts[Math.floor(Math.random() * opts.length)];
-  });
+  const INNER = /\{([^{}]+)\}/g;
+  let result = text;
+  for (let depth = 0; depth < 10; depth++) {
+    const next = result.replace(INNER, (_, choices) => {
+      const opts = choices.split("|");
+      return opts[Math.floor(Math.random() * opts.length)];
+    });
+    if (next === result) break;
+    result = next;
+    INNER.lastIndex = 0;
+  }
+  return result;
 }
 
 export function generateSpintaxVariant(template: string, variables: Record<string, string>): string {
@@ -27,12 +52,12 @@ export function createTransport(inbox: {
     host: inbox.smtpHost,
     port: inbox.smtpPort,
     secure: inbox.smtpPort === 465,
-    pool: true,
-    maxConnections: 5,
     auth: {
       user: inbox.smtpUser,
       pass: smtpPass,
     },
+    connectionTimeout: 15_000,
+    greetingTimeout: 10_000,
   });
 }
 
@@ -48,7 +73,7 @@ export async function sendEmail(
     to,
     subject,
     text: body,
-    html: body.replace(/\n/g, "<br>"),
+    html: toSafeHtml(body),
   });
 }
 

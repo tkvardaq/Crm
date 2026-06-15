@@ -57,7 +57,7 @@ export async function POST(req: NextRequest) {
   }
 
   const existing = await prismaClient.connectedInbox.findFirst({
-    where: { email: { equals: email, mode: "insensitive" } },
+    where: { email: { equals: email, mode: "insensitive" }, workspaceId },
   });
   if (existing) {
     return NextResponse.json(

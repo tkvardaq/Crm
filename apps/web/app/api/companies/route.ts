@@ -14,24 +14,33 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
   const search = searchParams.get("search");
 
+  const rawLimit = parseInt(searchParams.get("limit") || "50", 10);
+  const limit = Math.max(1, Math.min(200, isNaN(rawLimit) ? 50 : rawLimit));
+  const cursor = searchParams.get("cursor");
+
   const companies = await prismaClient.company.findMany({
     where: {
       workspaceId,
-      ...(search
-        ? { name: { contains: search, mode: "insensitive" } }
-        : {}),
+      ...(search ? { name: { contains: search, mode: "insensitive" } } : {}),
     },
     include: { _count: { select: { leads: true } } },
     orderBy: { name: "asc" },
-    take: 100,
+    take: limit + 1,
+    ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
   });
 
-  const result = companies.map(({ _count, ...company }) => ({
+  const hasMore = companies.length > limit;
+  const data = hasMore ? companies.slice(0, limit) : companies;
+  const result = data.map(({ _count, ...company }) => ({
     ...company,
     leadCount: _count.leads,
   }));
 
-  return NextResponse.json(result);
+  return NextResponse.json({
+    data: result,
+    nextCursor: hasMore ? data.at(-1)?.id : null,
+    hasMore,
+  });
 }
 
 export async function POST(req: NextRequest) {

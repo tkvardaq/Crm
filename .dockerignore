@@ -10,3 +10,5 @@ node_modules
 coverage
 dist
 .turbo
+tests
+scripts

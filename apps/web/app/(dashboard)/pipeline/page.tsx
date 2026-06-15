@@ -27,7 +27,7 @@ interface Deal {
   value: number;
   leadId: string;
   pipelineStageId: string;
-  expectedCloseDate: string | null;
+  expectedCloseDate: Date | null;
   notes: string | null;
   lead: Lead;
 }
@@ -76,11 +76,11 @@ function DealCard({ deal, onClick }: { deal: Deal; onClick: (deal: Deal) => void
       <p className="text-emerald-600 text-sm font-medium mt-1">
         ${deal.value.toLocaleString()}
       </p>
-      {deal.expectedCloseDate && (
-        <p className="text-xs text-slate-400 mt-0.5">
-          Close: {new Date(deal.expectedCloseDate).toLocaleDateString()}
-        </p>
-      )}
+       {deal.expectedCloseDate && (
+         <p className="text-xs text-slate-400 mt-0.5">
+           Close: {deal.expectedCloseDate.toLocaleDateString()}
+         </p>
+       )}
     </div>
   );
 }
@@ -357,7 +357,7 @@ export default function PipelinePage() {
     setEditingDeal(deal);
     setEditTitle(deal.title);
     setEditValue(String(deal.value));
-    setEditCloseDate(deal.expectedCloseDate ? deal.expectedCloseDate.split("T")[0] : "");
+    setEditCloseDate(deal.expectedCloseDate ? deal.expectedCloseDate.toISOString().split("T")[0] : "");
     setEditNotes(deal.notes || "");
   };
 

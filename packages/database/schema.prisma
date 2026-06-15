@@ -6,6 +6,7 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+  relationMode = "prisma"
 }
 
 model Workspace {
@@ -27,11 +28,13 @@ model Workspace {
   notes Note[]
   tags Tag[]
   auditLogs AuditLog[]
+  scrapeJobs ScrapeJob[]
 }
 
 model User {
   id           String   @id @default(uuid())
   workspaceId  String   @map("workspace_id")
+  currentWorkspaceId String?   @map("current_workspace_id")
   email String
   passwordHash String   @map("password_hash")
   firstName    String?  @map("first_name")
@@ -113,6 +116,7 @@ model Company {
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   leads     Lead[]
 
+  @@unique([workspaceId, domain])
   @@map("companies")
 }
 
@@ -120,6 +124,7 @@ model Lead {
   id            String    @id @default(uuid())
   workspaceId    String    @map("workspace_id")
   companyId      String?   @map("company_id")
+  scrapeJobId    String?   @map("scrape_job_id")
   email         String
   firstName      String?   @map("first_name")
   lastName       String?   @map("last_name")
@@ -135,6 +140,7 @@ model Lead {
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   company Company? @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  scrapeJob ScrapeJob? @relation(fields: [scrapeJobId], references: [id], onDelete: SetNull)
   deals Deal[]
   campaignQueues CampaignQueue[]
   communicationHistories CommunicationHistory[]
@@ -228,7 +234,7 @@ model CommunicationHistory {
   channel String
   subject String?
   bodyText String @map("body_text")
-  sentAt DateTime @map("sent_at")
+   sentAt DateTime @default(now()) @map("sent_at")
   sentiment String?
   messageId String? @map("message_id")
   isRead Boolean @default(false) @map("is_read")
@@ -255,7 +261,7 @@ model PipelineStage {
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   deals     Deal[]
 
-  @@unique([workspaceId, sortOrder])
+  @@index([workspaceId, sortOrder])
   @@map("pipeline_stages")
 }
 
@@ -266,7 +272,7 @@ model Deal {
   pipelineStageId   String    @map("pipeline_stage_id")
   title            String
   value            Float    @default(0)
-  expectedCloseDate String?  @map("expected_close_date")
+  expectedCloseDate DateTime?  @map("expected_close_date")
   notes            String?
   createdAt         DateTime  @default(now()) @map("created_at")
   updatedAt         DateTime  @updatedAt @map("updated_at")
@@ -283,7 +289,7 @@ model Note {
   workspaceId String   @map("workspace_id")
   leadId      String   @map("lead_id")
   userId      String   @map("user_id")
-  content     String
+  content     String    @db.VarChar(50000) @map("content")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
@@ -337,4 +343,27 @@ model AuditLog {
   @@index([workspaceId, entity])
   @@index([workspaceId, action])
   @@map("audit_logs")
+}
+
+model ScrapeJob {
+  id            String    @id @default(uuid())
+  workspaceId    String    @map("workspace_id")
+  name          String
+  targetUrl     String    @map("target_url")
+  mode          String    @default("single")
+  maxPages      Int       @default(10) @map("max_pages")
+  status        String    @default("pending")
+  leadsFound    Int       @default(0) @map("leads_found")
+  pagesScraped  Int       @default(0) @map("pages_scraped")
+  completedAt   DateTime? @map("completed_at")
+  error         String?
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  leads    Lead[]
+
+  @@index([workspaceId])
+  @@index([workspaceId, status])
+  @@map("scrape_jobs")
 }

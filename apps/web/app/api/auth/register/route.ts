@@ -13,12 +13,12 @@ export async function POST(req: NextRequest) {
 
   const { email, password, workspaceName, firstName, lastName } = parsed.data;
 
+  const passwordHash = await bcrypt.hash(password, 12);
+
   const existing = await prismaClient.user.findFirst({ where: { email } });
   if (existing) {
     return NextResponse.json({ error: "Email already registered" }, { status: 409 });
   }
-
-	const passwordHash = await bcrypt.hash(password, 12);
 
 	const result = await prismaClient.$transaction(async (tx) => {
 		const workspace = await tx.workspace.create({

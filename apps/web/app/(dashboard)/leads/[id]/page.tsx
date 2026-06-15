@@ -68,7 +68,7 @@ interface Deal {
   title: string;
   value: number;
   pipelineStageId: string;
-  expectedCloseDate: string | null;
+  expectedCloseDate: Date | null;
   pipelineStage: { name: string };
 }
 
@@ -404,7 +404,7 @@ export default function LeadDetailPage() {
                     <p className="text-sm text-slate-700">${deal.value.toLocaleString()}</p>
                     <div className="flex items-center gap-2 mt-1">
                       <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">{deal.pipelineStage.name}</span>
-                      {deal.expectedCloseDate && <span className="text-xs text-slate-400">Close: {new Date(deal.expectedCloseDate).toLocaleDateString()}</span>}
+                       {deal.expectedCloseDate && <span className="text-xs text-slate-400">Close: {deal.expectedCloseDate.toLocaleDateString()}</span>}
                     </div>
                   </div>
                 ))}

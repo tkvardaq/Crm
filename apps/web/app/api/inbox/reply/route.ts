@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prismaClient } from "@crm/database";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { createTransport } from "@crm/email-engine";
+import { createTransport, toSafeHtml } from "@crm/email-engine";
 
 export async function POST(req: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -56,7 +56,7 @@ export async function POST(req: NextRequest) {
       to: lead.email,
       subject,
       text: body,
-      html: body.replace(/\n/g, "<br>"),
+       html: toSafeHtml(body),
     });
 
     await prismaClient.communicationHistory.create({

@@ -12,6 +12,10 @@ interface ScraperJobData {
   workspaceId: string;
   leadId?: string;
   companyId?: string;
+  scrapeJobId?: string;
+  mode?: "single" | "crawl" | "sitemap";
+  maxPages?: number;
+  autoEnrich?: boolean;
   proxy?: {
     url: string;
     username?: string;
@@ -19,86 +23,151 @@ interface ScraperJobData {
   };
 }
 
+const BLOCKED = /^(localhost|127\.|10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|169\.254\.|::1|0\.0\.0\.0)/i;
+
+function assertSafeUrl(raw: string): void {
+  let parsed: URL;
+  try { parsed = new URL(raw); }
+  catch { throw new Error(`Invalid URL: ${raw}`); }
+  if (!["http:", "https:"].includes(parsed.protocol))
+    throw new Error(`Blocked protocol: ${parsed.protocol}`);
+  if (BLOCKED.test(parsed.hostname))
+    throw new Error(`Blocked internal host: ${parsed.hostname}`);
+}
+
 async function processScraper(job: Job<ScraperJobData>) {
-  const { url, workspaceId, leadId, companyId, proxy } = job.data;
+  const { url, workspaceId, leadId, companyId, scrapeJobId, autoEnrich = false } = job.data;
+  assertSafeUrl(url);
 
-	const proxyConfig = proxy?.url
-		? { url: proxy.url, username: proxy.username, password: proxy.password }
-		: undefined;
-
-	const html = await fetchRawHtml(url, proxyConfig);
-	const emails = extractEmails(html);
-	const meta = extractMeta(html);
-	const markdown = await scrapeUrl(url, proxyConfig);
-
-	const result: Record<string, unknown> = {
-		url,
-		markdown: markdown.substring(0, 50000),
-		emails,
-		meta,
-		scrapedAt: new Date().toISOString(),
-	};
-
-  if (leadId) {
-    await prismaClient.lead.update({
-      where: { id: leadId, workspaceId },
-      data: {
-        scrapedAttributes: JSON.stringify(result),
-        status: "enriched",
-      },
-    });
+  if (scrapeJobId) {
+    await prismaClient.scrapeJob.update({
+      where: { id: scrapeJobId, workspaceId },
+      data: { status: "running" },
+    }).catch(() => {});
   }
 
-  if (companyId) {
-    const company = await prismaClient.company.findFirst({
-      where: { id: companyId, workspaceId },
-    });
-    if (company) {
-      let extraAttrs: Record<string, unknown> = {};
-      if (company.extraAttributes) {
-        try {
-          extraAttrs = typeof company.extraAttributes === "string"
-            ? JSON.parse(company.extraAttributes)
-            : company.extraAttributes;
-        } catch {
-          extraAttrs = {};
+  const enrichmentQueue = new Queue(QueueName.ENRICHMENT, { connection });
+
+  try {
+    const proxyConfig = job.data.proxy?.url
+      ? { url: job.data.proxy.url, username: job.data.proxy.username, password: job.data.proxy.password }
+      : undefined;
+
+    const html = await fetchRawHtml(url, proxyConfig);
+    const emails = extractEmails(html);
+    const meta = extractMeta(html);
+    const markdown = await scrapeUrl(url, proxyConfig);
+
+    const result: Record<string, unknown> = {
+      url,
+      markdown: markdown.substring(0, 50000),
+      emails,
+      meta,
+      scrapedAt: new Date().toISOString(),
+    };
+
+    let leadsCreated = 0;
+
+    if (leadId) {
+      await prismaClient.lead.update({
+        where: { id: leadId, workspaceId },
+        data: {
+          scrapedAttributes: JSON.stringify(result),
+          status: "enriched",
+        },
+      });
+    }
+
+    if (companyId) {
+      const company = await prismaClient.company.findFirst({
+        where: { id: companyId, workspaceId },
+      });
+      if (company) {
+        let extraAttrs: Record<string, unknown> = {};
+        if (company.extraAttributes) {
+          try {
+            extraAttrs = typeof company.extraAttributes === "string"
+              ? JSON.parse(company.extraAttributes)
+              : company.extraAttributes;
+          } catch {
+            extraAttrs = {};
+          }
+        }
+        await prismaClient.company.update({
+          where: { id: companyId },
+          data: {
+            extraAttributes: JSON.stringify({
+              ...extraAttrs,
+              scrapedMeta: meta,
+              scrapedAt: new Date().toISOString(),
+            }),
+          },
+        });
+      }
+    }
+
+    if (!leadId && !companyId && emails.length > 0) {
+      const emailsToProcess = emails.slice(0, 10);
+      for (const email of emailsToProcess) {
+        const lead = await prismaClient.lead.upsert({
+          where: { workspaceId_email: { workspaceId, email } },
+          create: {
+            workspaceId,
+            email,
+            status: "raw",
+            scrapeJobId: scrapeJobId ?? null,
+            scrapedAttributes: JSON.stringify({ sourceUrl: url }),
+          },
+          update: {
+            scrapeJobId: scrapeJobId ?? undefined,
+            scrapedAttributes: JSON.stringify({ sourceUrl: url }),
+          },
+        });
+        leadsCreated++;
+
+        if (autoEnrich) {
+          await enrichmentQueue.add("enrich", {
+            leadId: lead.id,
+            workspaceId,
+            enrichByEmail: true,
+            enrichByDomain: true,
+          }, {
+            jobId: `enrich-${lead.id}`,
+            attempts: 2,
+            backoff: { type: "exponential", delay: 10000 },
+          });
         }
       }
-      await prismaClient.company.update({
-        where: { id: companyId },
+    }
+
+    if (scrapeJobId) {
+      await prismaClient.scrapeJob.update({
+        where: { id: scrapeJobId, workspaceId },
         data: {
-          extraAttributes: JSON.stringify({
-            ...extraAttrs,
-            scrapedMeta: meta,
-            scrapedAt: new Date().toISOString(),
-          }),
+          status: "completed",
+          leadsFound: leadsCreated,
+          pagesScraped: 1,
+          completedAt: new Date(),
         },
-      });
+      }).catch(() => {});
     }
-  }
 
-  if (!leadId && !companyId && emails.length > 0) {
-    for (const email of emails.slice(0, 10)) {
-      await prismaClient.lead.upsert({
-        where: { workspaceId_email: { workspaceId, email } },
-        create: {
-          workspaceId,
-          email,
-          status: "raw",
-          scrapedAttributes: JSON.stringify({ sourceUrl: url }),
-        },
-        update: {
-          scrapedAttributes: JSON.stringify({ sourceUrl: url }),
-        },
-      });
+    console.log(
+      `[scraper-worker] Scraped ${url}: ${emails.length} emails found, ${markdown.length} chars content`
+    );
+
+    return result;
+  } catch (err: any) {
+    if (scrapeJobId) {
+      await prismaClient.scrapeJob.update({
+        where: { id: scrapeJobId, workspaceId },
+        data: { status: "failed", error: err.message },
+      }).catch(() => {});
     }
+    throw err;
+  } finally {
+    await enrichmentQueue.close();
   }
-
-  console.log(
-    `[scraper-worker] Scraped ${url}: ${emails.length} emails found, ${markdown.length} chars content`
-  );
-
-  return result;
 }
 
 const worker = new Worker<ScraperJobData>(QueueName.SCRAPER, processScraper, {

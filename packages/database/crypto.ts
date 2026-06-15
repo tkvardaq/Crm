@@ -15,6 +15,9 @@ function validateEncryptionKey(): void {
   if (key.startsWith("replace_") || key.length < 32) {
     console.error("[crypto] FERNET_KEY appears to be a placeholder or too short. Please set a proper 64-char hex key.");
   }
+  if (process.env.LEGACY_SALT === "crm-tool-salt-fixed") {
+    throw new Error("[crypto] LEGACY_SALT is set to the public default — critical security risk. Generate a new value.");
+  }
 }
 
 validateEncryptionKey();

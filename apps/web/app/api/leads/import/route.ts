@@ -121,6 +121,7 @@ export async function POST(req: NextRequest) {
   const validRows: ParsedRow[] = [];
   const errors: RowError[] = [];
   let skippedCount = 0;
+  const seenEmails = new Set<string>();
 
   for (let i = 1; i < lines.length; i++) {
     const cols = parseCsvLine(lines[i]);
@@ -143,10 +144,11 @@ export async function POST(req: NextRequest) {
     const phone = fieldToCol.phone !== undefined ? (cols[fieldToCol.phone] || "").trim() : undefined;
     const company = fieldToCol.company !== undefined ? (cols[fieldToCol.company] || "").trim() : undefined;
 
-    if (validRows.some((r) => r.email === email)) {
+    if (seenEmails.has(email)) {
       skippedCount++;
       continue;
     }
+    seenEmails.add(email);
 
     validRows.push({
       email,
@@ -166,46 +168,57 @@ export async function POST(req: NextRequest) {
     }, { status: 400 });
   }
 
+  const uniqueCompanyNames = [...new Set(validRows.map((r) => r.company).filter(Boolean) as string[])];
+  const coMap = new Map<string, string>();
+
   let created: number;
   try {
     const result = await prismaClient.$transaction(async (tx) => {
-      const insertedLeads: { id: string; email: string }[] = [];
+      if (uniqueCompanyNames.length) {
+        const existing = await tx.company.findMany({
+          where: { workspaceId, name: { in: uniqueCompanyNames, mode: "insensitive" } },
+          select: { id: true, name: true },
+        });
+        existing.forEach((c) => coMap.set(c.name.toLowerCase(), c.id));
 
-      for (const r of validRows) {
-        let companyId: string | null = null;
-        if (r.company) {
-          const existing = await tx.company.findFirst({
-            where: { workspaceId, name: { equals: r.company, mode: "insensitive" } },
+        const newNames = uniqueCompanyNames.filter((n) => !coMap.has(n.toLowerCase()));
+        if (newNames.length) {
+          await tx.company.createMany({
+            data: newNames.map((name) => ({ workspaceId, name })),
+            skipDuplicates: true,
           });
-          if (existing) {
-            companyId = existing.id;
-          } else {
-            const created = await tx.company.create({
-              data: { workspaceId, name: r.company },
-              select: { id: true },
-            });
-            companyId = created.id;
-          }
+          const created = await tx.company.findMany({
+            where: { workspaceId, name: { in: newNames } },
+            select: { id: true, name: true },
+          });
+          created.forEach((c) => coMap.set(c.name.toLowerCase(), c.id));
         }
+      }
 
-        const lead = await tx.lead.upsert({
-          where: { workspaceId_email: { workspaceId, email: r.email } },
-          create: {
+      const existingEmails = new Set(
+        (await tx.lead.findMany({
+          where: { workspaceId, email: { in: validRows.map((r) => r.email) } },
+          select: { email: true },
+        })).map((l) => l.email)
+      );
+      skippedCount += existingEmails.size;
+
+      const toInsert = validRows.filter((r) => !existingEmails.has(r.email));
+      if (toInsert.length) {
+        await tx.lead.createMany({
+          data: toInsert.map((r) => ({
             workspaceId,
             email: r.email,
             firstName: r.firstName || null,
             lastName: r.lastName || null,
             phone: r.phone || null,
             status: "raw",
-            companyId,
-          },
-          update: {},
-          select: { id: true, email: true },
+            companyId: r.company ? (coMap.get(r.company.toLowerCase()) ?? null) : null,
+          })),
+          skipDuplicates: true,
         });
-        insertedLeads.push(lead);
       }
-
-      return { count: insertedLeads.length };
+      return { count: toInsert.length };
     });
     created = result.count;
   } catch (err) {

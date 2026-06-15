@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prismaClient } from "@crm/database";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { serialize } from "cookie";
 
 const switchWorkspaceSchema = z.object({
   workspaceId: z.string().uuid({ message: "Invalid workspaceId format" }),
@@ -44,5 +45,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Not a member of this workspace" }, { status: 403 });
   }
 
-  return NextResponse.json({ message: "Workspace switched", workspaceId });
+  const cookie = serialize("next-workspace", workspaceId, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+    maxAge: 30,
+  });
+  const res = NextResponse.json({ message: "Workspace switched", workspaceId });
+  res.headers.set("Set-Cookie", cookie);
+  return res;
 }

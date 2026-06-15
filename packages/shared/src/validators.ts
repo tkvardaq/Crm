@@ -97,7 +97,7 @@ export const dealSchema = z.object({
   pipelineStageId: z.string().uuid(),
   title: z.string().min(1).max(255),
   value: z.number().min(0).default(0),
-  expectedCloseDate: z.string().optional(),
+  expectedCloseDate: z.coerce.date().optional(),
   notes: z.string().optional(),
 });
 
@@ -106,7 +106,7 @@ export const dealCreateSchema = z.object({
   pipelineStageId: z.string().uuid(),
   title: z.string().min(1).max(255),
   value: z.number().min(0).default(0),
-  expectedCloseDate: z.string().optional(),
+  expectedCloseDate: z.coerce.date().optional(),
   notes: z.string().optional(),
 });
 

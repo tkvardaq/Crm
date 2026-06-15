@@ -79,6 +79,14 @@ async jwt({ token, user }) {
         token.workspaceId = user.workspaceId;
         token.role = user.role;
       }
+      const req = arguments[2] as Request | undefined;
+      const switchTo = (req as any)?.cookies?.["next-workspace"];
+      if (switchTo && token.sub) {
+        const member = await prismaClient.user.findFirst({
+          where: { id: String(token.sub), workspaceId: switchTo },
+        });
+        if (member) token.workspaceId = switchTo;
+      }
       return token;
     },
     async session({ session, token }) {

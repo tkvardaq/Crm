@@ -31,11 +31,11 @@ function getEnrichmentService(): WaterfallEnrichmentService {
   return cachedService;
 }
 
-async function fetchWithTimeout(url: string, ms: number): Promise<Response> {
+async function fetchWithTimeout(url: string, ms: number, init?: RequestInit): Promise<Response> {
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), ms);
   try {
-    const res = await fetch(url, { signal: controller.signal });
+    const res = await fetch(url, { ...init, signal: controller.signal });
     clearTimeout(id);
     return res;
   } catch {
@@ -57,8 +57,9 @@ function buildEnrichmentService(): WaterfallEnrichmentService {
       mode: "live",
       async enrichByDomain(domain: string) {
         const res = await fetchWithTimeout(
-          `https://api.apollo.io/v1/organizations/enrich?domain=${domain}&api_key=${process.env.APOLLO_API_KEY}`,
-          8000
+          `https://api.apollo.io/v1/organizations/enrich?domain=${domain}`,
+          8000,
+          { headers: { "X-Api-Key": process.env.APOLLO_API_KEY! } }
         );
         const data = await res.json();
         return {
@@ -69,8 +70,9 @@ function buildEnrichmentService(): WaterfallEnrichmentService {
       },
       async enrichByEmail(email: string) {
         const res = await fetchWithTimeout(
-          `https://api.apollo.io/v1/people/match?email=${email}&api_key=${process.env.APOLLO_API_KEY}`,
-          8000
+          `https://api.apollo.io/v1/people/match?email=${email}`,
+          8000,
+          { headers: { "X-Api-Key": process.env.APOLLO_API_KEY! } }
         );
         const data = await res.json();
         return {
@@ -93,8 +95,9 @@ function buildEnrichmentService(): WaterfallEnrichmentService {
       mode: "live",
       async enrichByDomain(domain: string) {
         const res = await fetchWithTimeout(
-          `https://api.hunter.io/v2/domain-search?domain=${domain}&api_key=${process.env.HUNTER_API_KEY}`,
-          8000
+          `https://api.hunter.io/v2/domain-search?domain=${domain}`,
+          8000,
+          { headers: { "Authorization": `Bearer ${process.env.HUNTER_API_KEY}` } }
         );
         const data = await res.json();
         return {
@@ -105,8 +108,9 @@ function buildEnrichmentService(): WaterfallEnrichmentService {
       },
       async enrichByEmail(email: string) {
         const res = await fetchWithTimeout(
-          `https://api.hunter.io/v2/email-verifier?email=${email}&api_key=${process.env.HUNTER_API_KEY}`,
-          8000
+          `https://api.hunter.io/v2/email-verifier?email=${email}`,
+          8000,
+          { headers: { "Authorization": `Bearer ${process.env.HUNTER_API_KEY}` } }
         );
         const data = await res.json();
         return {
@@ -116,8 +120,9 @@ function buildEnrichmentService(): WaterfallEnrichmentService {
       },
       async verifyEmail(email: string) {
         const res = await fetchWithTimeout(
-          `https://api.hunter.io/v2/email-verifier?email=${email}&api_key=${process.env.HUNTER_API_KEY}`,
-          8000
+          `https://api.hunter.io/v2/email-verifier?email=${email}`,
+          8000,
+          { headers: { "Authorization": `Bearer ${process.env.HUNTER_API_KEY}` } }
         );
         const data = await res.json();
         return data.data?.result === "deliverable";
@@ -174,12 +179,10 @@ async function processEnrichment(job: Job<EnrichmentJobData>) {
       const result = await service.enrichByDomain(domain);
       if (result.company) {
         if (!lead.company) {
-          const company = await prismaClient.company.create({
-            data: {
-              workspaceId,
-              name: result.company,
-              domain,
-            },
+          const company = await prismaClient.company.upsert({
+            where: { workspaceId_domain: { workspaceId, domain } },
+            create: { workspaceId, name: result.company, domain },
+            update: {},
           });
           updateData.companyId = company.id;
         } else if (!lead.company.name) {
