@@ -4,12 +4,14 @@ const nextConfig = {
   swcMinify: true,
   transpilePackages: [
     '@crm/shared',
-    '@crm/database',
     '@crm/email-engine',
     '@crm/scraper',
     '@crm/enrichment',
     '@crm/ai-client',
   ],
+  experimental: {
+    serverComponentsExternalPackages: ['@prisma/client', '@crm/database'],
+  },
 };
 
 module.exports = nextConfig;

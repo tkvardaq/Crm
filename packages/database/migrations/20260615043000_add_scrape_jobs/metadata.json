@@ -1,7 +1,0 @@
-{
-  "id": "20260615043000_add_scrape_jobs",
-  "migrationName": "add_scrape_jobs",
-  "datamodel": "model ScrapeJob {\n  id          String   @id @default(uuid())\n  workspaceId String   @map(\"workspace_id\")\n  name        String\n  targetUrl   String   @map(\"target_url\")\n  mode        String   @default(\"single\")\n  maxPages    Int      @default(10) @map(\"max_pages\")\n  status      String   @default(\"pending\")\n  leadsFound  Int      @default(0) @map(\"leads_found\")\n  pagesScraped Int      @default(0) @map(\"pages_scraped\")\n  completedAt DateTime? @map(\"completed_at\")\n  error       String?\n  createdAt   DateTime @default(now()) @map(\"created_at\")\n  updatedAt   DateTime @updatedAt @map(\"updated_at\")\n  \n  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)\n  leads    Lead[]\n\n  @@index([workspaceId])\n  @@index([workspaceId, status])\n  @@map(\"scrape_jobs\")\n}\n\nmodel Lead {\n  id           String    @id @default(uuid())\n  workspaceId   String    @map(\"workspace_id\")\n  companyId     String?   @map(\"company_id\")\n  scrapeJobId   String?   @map(\"scrape_job_id\")\n  // ... other fields\n  scrapeJob ScrapeJob? @relation(fields: [scrapeJobId], references: [id], onDelete: SetNull)\n}",
-  "appliedStepsCount": 3,
-  "status": "DatabaseMigration"
-}
