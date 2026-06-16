@@ -52,6 +52,9 @@ export default function CampaignDetailPage() {
   const [campaign, setCampaign] = useState<Campaign | null>(null);
   const [loading, setLoading] = useState(true);
   const [statusUpdating, setStatusUpdating] = useState(false);
+  const [editingSteps, setEditingSteps] = useState(false);
+  const [newStep, setNewStep] = useState({ stepNumber: 0, delayDays: 0, channel: "email" });
+  const [addingStep, setAddingStep] = useState(false);
 
   const fetchCampaign = useCallback(async () => {
     try {
@@ -282,12 +285,16 @@ export default function CampaignDetailPage() {
       {/* Quick Actions */}
       <div className="bg-white rounded-xl border p-5">
         <h2 className="font-semibold text-slate-900 mb-4">Quick Actions</h2>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
           <button
-            onClick={() => router.push("/campaigns")}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+            onClick={() => setEditingSteps(!editingSteps)}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              editingSteps
+                ? "bg-slate-200 text-slate-700 hover:bg-slate-300"
+                : "bg-blue-600 hover:bg-blue-700 text-white"
+            }`}
           >
-            Edit Steps
+            {editingSteps ? "Done Editing" : "Edit Steps"}
           </button>
           <select
             value={campaign.status}
@@ -303,6 +310,62 @@ export default function CampaignDetailPage() {
           </select>
         </div>
       </div>
+
+      {editingSteps && (
+        <div className="bg-white rounded-xl border p-5 mt-6">
+          <h2 className="font-semibold text-slate-900 mb-4">Add Step</h2>
+          <div className="flex items-end gap-3">
+            <div>
+              <label className="block text-xs font-medium text-slate-500 mb-1">Step #</label>
+              <input type="number" value={newStep.stepNumber}
+                onChange={(e) => setNewStep(s => ({...s, stepNumber: parseInt(e.target.value) || 0}))}
+                className="w-20 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-500 mb-1">Delay (days)</label>
+              <input type="number" value={newStep.delayDays}
+                onChange={(e) => setNewStep(s => ({...s, delayDays: parseInt(e.target.value) || 0}))}
+                className="w-24 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-500 mb-1">Channel</label>
+              <select value={newStep.channel}
+                onChange={(e) => setNewStep(s => ({...s, channel: e.target.value}))}
+                className="border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <option value="email">Email</option>
+                <option value="linkedin">LinkedIn</option>
+                <option value="call">Call</option>
+              </select>
+            </div>
+            <button onClick={async () => {
+              if (!newStep.stepNumber) return;
+              setAddingStep(true);
+              try {
+                const res = await fetch(`/api/campaigns/${id}/steps`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  credentials: "include",
+                  body: JSON.stringify({ stepNumber: newStep.stepNumber, delayDays: newStep.delayDays, channel: newStep.channel }),
+                });
+                if (res.ok) {
+                  fetchCampaign();
+                  setNewStep({ stepNumber: 0, delayDays: 0, channel: "email" });
+                } else {
+                  const err = await res.json();
+                  alert(err.error || "Failed to add step");
+                }
+              } catch (err) {
+                alert("Failed to add step");
+              } finally {
+                setAddingStep(false);
+              }
+            }} disabled={addingStep}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
+              {addingStep ? "Adding..." : "Add Step"}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prismaClient } from "@crm/database";
+import { prismaClient, auditLog } from "@crm/database";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { dealCreateSchema } from "@crm/shared";
@@ -65,6 +65,11 @@ export async function POST(req: NextRequest) {
       notes,
     },
   });
+
+  auditLog({ workspaceId, userId: session.user.id, action: "deal.create",
+    entity: "Deal", entityId: deal.id,
+    ip: req.headers.get("x-forwarded-for")?.split(",")[0] ?? undefined,
+  }).catch(() => {});
 
   return NextResponse.json(deal, { status: 201 });
 }

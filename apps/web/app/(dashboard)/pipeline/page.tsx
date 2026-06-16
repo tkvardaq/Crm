@@ -78,7 +78,7 @@ function DealCard({ deal, onClick }: { deal: Deal; onClick: (deal: Deal) => void
       </p>
        {deal.expectedCloseDate && (
          <p className="text-xs text-slate-400 mt-0.5">
-           Close: {deal.expectedCloseDate.toLocaleDateString()}
+           Close: {new Date(deal.expectedCloseDate).toLocaleDateString()}
          </p>
        )}
     </div>
@@ -357,7 +357,7 @@ export default function PipelinePage() {
     setEditingDeal(deal);
     setEditTitle(deal.title);
     setEditValue(String(deal.value));
-    setEditCloseDate(deal.expectedCloseDate ? deal.expectedCloseDate.toISOString().split("T")[0] : "");
+    setEditCloseDate(deal.expectedCloseDate ? new Date(deal.expectedCloseDate).toISOString().split("T")[0] : "");
     setEditNotes(deal.notes || "");
   };
 

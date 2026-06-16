@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prismaClient } from "@crm/database";
+import { prismaClient, auditLog } from "@crm/database";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { moveDealSchema } from "@crm/shared";
@@ -39,6 +39,11 @@ export async function PATCH(
     where: { id, workspaceId },
     data: { pipelineStageId: parsed.data.destinationStageId },
   });
+
+  auditLog({ workspaceId, userId: session.user.id, action: "deal.move",
+    entity: "Deal", entityId: id,
+    ip: req.headers.get("x-forwarded-for")?.split(",")[0] ?? undefined,
+  }).catch(() => {});
 
   return NextResponse.json(updated);
 }

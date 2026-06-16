@@ -45,14 +45,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Not a member of this workspace" }, { status: 403 });
   }
 
-  const cookie = serialize("next-workspace", workspaceId, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/",
-    maxAge: 30,
+  await prismaClient.user.update({
+    where: { id: session.user.id },
+    data: { currentWorkspaceId: workspaceId },
   });
+
   const res = NextResponse.json({ message: "Workspace switched", workspaceId });
-  res.headers.set("Set-Cookie", cookie);
   return res;
 }

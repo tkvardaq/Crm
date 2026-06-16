@@ -93,10 +93,15 @@ async function processImapSync(job: Job<ImapSyncJobData>) {
 	messageFetcher.on("message", (msg: any) => {
 		const promise = new Promise<void>((resolve, reject) => {
 			const bodyChunks: Buffer[] = [];
+			const messageTimeout = setTimeout(() => {
+				reject(new Error("Message parsing timeout"));
+			}, 30_000);
 			msg.on("body", (stream: NodeJS.ReadableStream) => {
 				stream.on("data", (chunk: Buffer) => bodyChunks.push(chunk));
+				stream.on("error", reject);
 				stream.on("end", async () => {
 					try {
+						clearTimeout(messageTimeout);
 						const raw = Buffer.concat(bodyChunks).toString("utf8");
 						const parsed = await simpleParser(raw);
 
@@ -159,6 +164,7 @@ async function processImapSync(job: Job<ImapSyncJobData>) {
 
 						resolve();
 					} catch (err) {
+						clearTimeout(messageTimeout);
 						reject(err);
 					}
 				});

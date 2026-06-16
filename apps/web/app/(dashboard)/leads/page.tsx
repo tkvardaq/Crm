@@ -37,6 +37,13 @@ interface Lead {
   createdAt: string;
 }
 
+const LEAD_TABS = [
+  { href: "/leads", label: "All Leads" },
+  { href: "/leads/import", label: "Import" },
+  { href: "/leads/discover", label: "Discover" },
+  { href: "/leads/scrape", label: "Scraper" },
+];
+
 export default function LeadsPage() {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
@@ -125,12 +132,23 @@ export default function LeadsPage() {
           <h1 className="text-2xl font-bold text-slate-900">Leads</h1>
           <p className="text-sm text-slate-500 mt-0.5">{filtered.length} leads</p>
         </div>
-        <button
-          onClick={() => { setShowAddModal(true); setEditingLead(null); setForm({ email: "", firstName: "", lastName: "", phone: "" }); }}
-          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-        >
-          + Add Lead
-        </button>
+        <div className="flex gap-2">
+          {LEAD_TABS.filter((t) => t.href !== "/leads").map((tab) => (
+            <Link
+              key={tab.href}
+              href={tab.href}
+              className="text-sm px-3 py-1.5 rounded-md bg-slate-100 text-slate-600 hover:bg-slate-200 hover:text-slate-900 transition-colors"
+            >
+              {tab.label}
+            </Link>
+          ))}
+          <button
+            onClick={() => { setShowAddModal(true); setEditingLead(null); setForm({ email: "", firstName: "", lastName: "", phone: "" }); }}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+          >
+            + Add Lead
+          </button>
+        </div>
       </div>
 
       <div className="bg-white rounded-xl border overflow-hidden">

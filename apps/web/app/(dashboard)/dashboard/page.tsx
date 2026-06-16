@@ -298,7 +298,7 @@ export default function DashboardPage() {
                     <div className="flex items-center justify-between mt-1">
                       <span className="text-sm text-emerald-600 font-medium">${deal.value.toLocaleString()}</span>
                       <span className="text-xs text-slate-400">
-                        {deal.expectedCloseDate ? formatDate(deal.expectedCloseDate.toISOString()) : "—"}
+                        {deal.expectedCloseDate ? formatDate(new Date(deal.expectedCloseDate).toISOString()) : "—"}
                       </span>
                     </div>
                   </div>

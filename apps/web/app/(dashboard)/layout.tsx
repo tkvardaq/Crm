@@ -6,10 +6,20 @@ import { usePathname } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
 import { ErrorBoundary } from "@/components/error-boundary";
 
-const navItems = [
+interface NavItem {
+  href: string;
+  label: string;
+  icon: string;
+  isSub?: boolean;
+}
+
+const navItems: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: "🏠" },
   { href: "/pipeline", label: "Pipeline", icon: "📊" },
   { href: "/leads", label: "Leads", icon: "👥" },
+  { href: "/leads/discover", label: "Discover", icon: "🔍", isSub: true },
+  { href: "/leads/scrape", label: "Scraper", icon: "🕷️", isSub: true },
+  { href: "/leads/import", label: "Import", icon: "📥", isSub: true },
   { href: "/campaigns", label: "Campaigns", icon: "📧" },
   { href: "/inbox", label: "Inbox", icon: "📥" },
   { href: "/companies", label: "Companies", icon: "🏢" },
@@ -149,15 +159,17 @@ export default function DashboardLayout({
               href={item.href}
               onClick={closeMobileMenu}
               title={sidebarCollapsed ? item.label : undefined}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-all duration-150 border-l-[3px] ${
+              className={`flex items-center gap-3 rounded-lg transition-all duration-150 border-l-[3px] ${
                 sidebarCollapsed ? "justify-center" : ""
+              } ${
+                item.isSub ? "ml-3 pl-2 py-2 text-xs" : "px-3 py-2.5 text-sm"
               } ${
                 isActive
                   ? "border-l-blue-500 bg-blue-500/10 text-white font-medium"
                   : "border-l-transparent text-slate-400 hover:bg-slate-800/60 hover:text-slate-200"
               }`}
             >
-              <span className="text-lg flex-shrink-0">{item.icon}</span>
+              <span className={`flex-shrink-0 ${item.isSub ? "text-base" : "text-lg"}`}>{item.icon}</span>
               {!sidebarCollapsed && <span>{item.label}</span>}
             </Link>
           );

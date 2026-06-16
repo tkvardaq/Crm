@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prismaClient, encrypt } from "@crm/database";
+import { prismaClient, encrypt, auditLog } from "@crm/database";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { connectedInboxSchema } from "@crm/shared";
@@ -87,6 +87,11 @@ export async function POST(req: NextRequest) {
     },
     include: { sendingDomain: true },
   });
+
+  auditLog({ workspaceId, userId: session.user.id, action: "inbox.create",
+    entity: "ConnectedInbox", entityId: inbox.id,
+    ip: req.headers.get("x-forwarded-for")?.split(",")[0] ?? undefined,
+  }).catch(() => {});
 
   return NextResponse.json(inbox, { status: 201 });
 }

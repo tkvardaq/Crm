@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prismaClient } from "@crm/database";
+import { prismaClient, auditLog } from "@crm/database";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { leadCreateSchema, QueueName } from "@crm/shared";
@@ -87,6 +87,11 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     console.error("[leads] Failed to queue enrichment for lead:", err);
   }
+
+  auditLog({ workspaceId, userId: session.user.id, action: "lead.create",
+    entity: "Lead", entityId: lead.id,
+    ip: req.headers.get("x-forwarded-for")?.split(",")[0] ?? undefined,
+  }).catch(() => {});
 
   return NextResponse.json(lead, { status: 201 });
 }

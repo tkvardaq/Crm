@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prismaClient } from "@crm/database";
+import { prismaClient, auditLog } from "@crm/database";
 import { registerSchema } from "@crm/shared";
 import bcrypt from "bcryptjs";
 
@@ -48,6 +48,11 @@ export async function POST(req: NextRequest) {
 
 		return { user, workspace };
 	});
+
+	auditLog({ workspaceId: result.workspace.id, userId: result.user.id, action: "user.register",
+    entity: "User", entityId: result.user.id,
+    ip: req.headers.get("x-forwarded-for")?.split(",")[0] ?? undefined,
+  }).catch(() => {});
 
 	return NextResponse.json(
 		{

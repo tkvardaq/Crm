@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prismaClient } from "@crm/database";
+import { prismaClient, auditLog } from "@crm/database";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { campaignLaunchSchema, CampaignStatus, QueueName } from "@crm/shared";
@@ -151,6 +151,11 @@ export async function POST(
   } finally {
     await emailDispatchQueue.close();
   }
+
+  auditLog({ workspaceId, userId: session.user.id, action: "campaign.launch",
+    entity: "Campaign", entityId: campaignId,
+    ip: req.headers.get("x-forwarded-for")?.split(",")[0] ?? undefined,
+  }).catch(() => {});
 
   return NextResponse.json({
     message: "Campaign launched",

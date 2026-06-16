@@ -13,7 +13,7 @@ interface ScraperJobData {
   leadId?: string;
   companyId?: string;
   scrapeJobId?: string;
-  mode?: "single" | "crawl" | "sitemap";
+  mode?: "single" | "crawl" | "sitemap" | "discover";
   maxPages?: number;
   autoEnrich?: boolean;
   proxy?: {
@@ -36,7 +36,7 @@ function assertSafeUrl(raw: string): void {
 }
 
 async function processScraper(job: Job<ScraperJobData>) {
-  const { url, workspaceId, leadId, companyId, scrapeJobId, autoEnrich = false } = job.data;
+  const { url, workspaceId, leadId, companyId, scrapeJobId, mode = "single", autoEnrich = false, maxPages = 10 } = job.data;
   assertSafeUrl(url);
 
   if (scrapeJobId) {
@@ -53,6 +53,75 @@ async function processScraper(job: Job<ScraperJobData>) {
       ? { url: job.data.proxy.url, username: job.data.proxy.username, password: job.data.proxy.password }
       : undefined;
 
+    let leadsCreated = 0;
+
+    if (mode === "discover") {
+      const html = await fetchRawHtml(url, proxyConfig);
+      const emails = extractEmails(html);
+      const meta = extractMeta(html);
+      const markdown = await scrapeUrl(url, proxyConfig);
+
+      const result: Record<string, unknown> = {
+        url,
+        markdown: markdown.substring(0, 50000),
+        emails,
+        meta,
+        scrapedAt: new Date().toISOString(),
+      };
+
+      if (emails.length > 0) {
+        const emailsToProcess = emails.slice(0, 10);
+        for (const email of emailsToProcess) {
+          const lead = await prismaClient.lead.upsert({
+            where: { workspaceId_email: { workspaceId, email } },
+            create: {
+              workspaceId,
+              email,
+              status: "raw",
+              scrapeJobId: scrapeJobId ?? null,
+              scrapedAttributes: JSON.stringify({ sourceUrl: url, discovered: true }),
+            },
+            update: {
+              scrapeJobId: scrapeJobId ?? undefined,
+              scrapedAttributes: JSON.stringify({ sourceUrl: url, discovered: true }),
+            },
+          });
+          leadsCreated++;
+
+          if (autoEnrich) {
+            await enrichmentQueue.add("enrich", {
+              leadId: lead.id,
+              workspaceId,
+              enrichByEmail: true,
+              enrichByDomain: true,
+            }, {
+              jobId: `enrich-${lead.id}`,
+              attempts: 2,
+              backoff: { type: "exponential", delay: 10000 },
+            });
+          }
+        }
+      }
+
+      if (scrapeJobId) {
+        await prismaClient.scrapeJob.update({
+          where: { id: scrapeJobId, workspaceId },
+          data: {
+            status: "completed",
+            leadsFound: leadsCreated,
+            pagesScraped: 1,
+            completedAt: new Date(),
+          },
+        }).catch(() => {});
+      }
+
+      console.log(
+        `[scraper-worker] Discovered ${url}: ${emails.length} emails found`
+      );
+
+      return result;
+    }
+
     const html = await fetchRawHtml(url, proxyConfig);
     const emails = extractEmails(html);
     const meta = extractMeta(html);
@@ -65,8 +134,6 @@ async function processScraper(job: Job<ScraperJobData>) {
       meta,
       scrapedAt: new Date().toISOString(),
     };
-
-    let leadsCreated = 0;
 
     if (leadId) {
       await prismaClient.lead.update({

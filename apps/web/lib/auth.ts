@@ -73,19 +73,20 @@ export const authOptions: NextAuthOptions = {
     }),
   ],
   callbacks: {
-async jwt({ token, user }) {
+async jwt({ token, user, trigger }) {
       if (user) {
         token.id = user.id;
         token.workspaceId = user.workspaceId;
         token.role = user.role;
       }
-      const req = arguments[2] as Request | undefined;
-      const switchTo = (req as any)?.cookies?.["next-workspace"];
-      if (switchTo && token.sub) {
-        const member = await prismaClient.user.findFirst({
-          where: { id: String(token.sub), workspaceId: switchTo },
+      if (trigger === "update" && token.sub) {
+        const dbUser = await prismaClient.user.findUnique({
+          where: { id: String(token.sub) },
+          select: { currentWorkspaceId: true, workspaceId: true },
         });
-        if (member) token.workspaceId = switchTo;
+        if (dbUser) {
+          token.workspaceId = dbUser.currentWorkspaceId ?? dbUser.workspaceId;
+        }
       }
       return token;
     },
