@@ -1,0 +1,188 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: crm-postgres-staging
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-crm_db_staging}
+      POSTGRES_USER: ${POSTGRES_USER:-admin}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - postgres_staging_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-admin} -d ${POSTGRES_DB:-crm_db_staging}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - crm-staging-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: crm-redis-staging
+    ports:
+      - "127.0.0.1:6380:6379"
+    volumes:
+      - redis_staging_data:/data
+    command: >
+      redis-server
+      --appendonly yes
+      --appendfsync everysec
+      --requirepass ${REDIS_PASSWORD:-changeme}
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$REDIS_PASSWORD\" ping || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - crm-staging-network
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: crm-web-staging
+    env_file: .env.staging
+    environment:
+      - NODE_ENV=staging
+    ports:
+      - "3001:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - crm-staging-network
+
+  email-dispatcher:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+      args:
+        WORKER_NAME: email-dispatcher
+    container_name: crm-email-dispatcher-staging
+    env_file: .env.staging
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - crm-staging-network
+
+  imap-sync:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+      args:
+        WORKER_NAME: imap-sync
+    container_name: crm-imap-sync-staging
+    env_file: .env.staging
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - crm-staging-network
+
+  warmup:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+      args:
+        WORKER_NAME: warmup
+    container_name: crm-warmup-staging
+    env_file: .env.staging
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - crm-staging-network
+
+  scraper-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+      args:
+        WORKER_NAME: scraper-worker
+    container_name: crm-scraper-worker-staging
+    env_file: .env.staging
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - crm-staging-network
+
+  enrichment-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+      args:
+        WORKER_NAME: enrichment-worker
+    container_name: crm-enrichment-worker-staging
+    env_file: .env.staging
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - crm-staging-network
+
+  bull-board:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+      args:
+        WORKER_NAME: bull-board
+    container_name: crm-bull-board-staging
+    env_file: .env.staging
+    ports:
+      - "3011:3010"
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - crm-staging-network
+
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: crm-migrate-staging
+    env_file: .env.staging
+    command: npx prisma migrate deploy --schema=packages/database/schema.prisma
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - crm-staging-network
+    deploy:
+      restart_policy:
+        condition: on-failure
+
+networks:
+  crm-staging-network:
+    driver: bridge
+
+volumes:
+  postgres_staging_data:
+  redis_staging_data:

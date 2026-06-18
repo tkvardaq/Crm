@@ -4,18 +4,9 @@ RUN apk add --no-cache libc6-compat python3 make g++
 
 WORKDIR /app
 
-COPY package.json package-lock.json* ./
-COPY packages/database/package.json ./packages/database/
-COPY packages/shared/package.json ./packages/shared/
-COPY packages/email-engine/package.json ./packages/email-engine/
-COPY packages/scraper/package.json ./packages/scraper/
-COPY packages/enrichment/package.json ./packages/enrichment/
-COPY packages/ai-client/package.json ./packages/ai-client/
-COPY apps/web/package.json ./apps/web/
-
-RUN npm install
-
 COPY . .
+
+RUN npm install --force
 
 RUN npx prisma generate --schema=packages/database/schema.prisma
 
@@ -23,5 +14,6 @@ EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 ENV NODE_ENV=development
+ENV PATH="/app/node_modules/.bin:${PATH}"
 
-CMD ["npx", "next", "dev", "--port", "3000", "--hostname", "0.0.0.0"]
+CMD ["sh", "-c", "next dev --port 3000 --hostname 0.0.0.0"]

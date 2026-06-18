@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
 import { rateLimitAuth, rateLimitApi } from "@/lib/rate-limit-edge";
+import { createRequestLogger } from "@crm/shared";
 
 const CSRF_SAFE_METHODS = ["GET", "HEAD", "OPTIONS"];
 
@@ -31,8 +32,13 @@ function validateOrigin(request: NextRequest): boolean {
   return true;
 }
 
+function generateRequestId(): string {
+  return `${Date.now()}-${Math.random().toString(36).substring(2, 10)}`;
+}
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  const requestId = request.headers.get('x-request-id') || generateRequestId();
 
   const ip =
     request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
@@ -41,13 +47,14 @@ export async function middleware(request: NextRequest) {
 
   const isAuthRoute = pathname === "/api/auth/signin" || pathname === "/api/auth/signout" || pathname === "/api/auth/callback" || pathname.startsWith("/api/auth/providers");
   const isCronRoute = pathname.startsWith("/api/cron/");
+  const isHealthRoute = pathname === "/api/health" || pathname === "/api/ready";
 
   if (isAuthRoute || pathname === "/login" || pathname === "/register") {
     const result = await rateLimitAuth(ip);
     if (!result.success) {
       return NextResponse.json({ error: "Too many requests" }, { status: 429 });
     }
-  } else if (pathname.startsWith("/api/") && !isCronRoute) {
+  } else if (pathname.startsWith("/api/") && !isCronRoute && !isHealthRoute) {
     const result = await rateLimitApi(ip);
     if (!result.success) {
       return NextResponse.json({ error: "Too many requests" }, { status: 429 });
@@ -77,7 +84,13 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  return NextResponse.next();
+  const response = NextResponse.next();
+  response.headers.set('x-request-id', requestId);
+  
+  const logger = createRequestLogger(requestId, token.id as string, token.workspaceId as string);
+  logger.info({ method: request.method, pathname, ip, userAgent: request.headers.get('user-agent') }, 'Request received');
+
+  return response;
 }
 
 export const config = {

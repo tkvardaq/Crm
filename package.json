@@ -13,13 +13,17 @@
     "build:packages": "npm run build --workspace=@crm/shared && npm run build --workspace=@crm/database && npm run build --workspace=@crm/enrichment",
     "typecheck": "turbo run typecheck",
     "lint": "turbo run lint",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "db:migrate": "npm run db:migrate --workspace=@crm/database",
     "db:generate": "npm run db:generate --workspace=@crm/database"
   },
   "devDependencies": {
     "bcryptjs": "^3.0.3",
     "turbo": "^2.3.0",
-    "typescript": "^5.5.0"
+    "typescript": "^5.5.0",
+    "vitest": "^2.0.0",
+    "@types/node": "^20.14.0"
   },
   "packageManager": "npm@11.9.0",
   "dependencies": {

@@ -2,13 +2,12 @@ import { Worker, Job } from "bullmq";
 import { prismaClient } from "@crm/database";
 import { QueueName } from "@crm/shared";
 import { createTransport, generateSpintaxVariant, getWeightedRandomIndex, toSafeHtml } from "@crm/email-engine";
-import IORedis from "ioredis";
 
 const REDIS_URL = process.env.REDIS_URL || "redis://localhost:6379";
 const MAX_RETRY = 3;
 const BACKOFF_MS = 5000;
 
-const connection = new IORedis(REDIS_URL, { maxRetriesPerRequest: null });
+const connection = { url: REDIS_URL, maxRetriesPerRequest: null };
 
 const transportCache = new Map<string, ReturnType<typeof createTransport>>();
 
@@ -148,15 +147,6 @@ const worker = new Worker(QueueName.EMAIL_DISPATCH, processEmailDispatch, {
     max: 50,
     duration: 1000,
   },
-  defaultJobOptions: {
-    attempts: MAX_RETRY,
-    backoff: {
-      type: "exponential",
-      delay: BACKOFF_MS,
-    },
-    removeOnComplete: { count: 1000 },
-    removeOnFail: { count: 5000 },
-  },
 });
 
 worker.on("completed", (job) => {
@@ -176,7 +166,6 @@ console.log("[email-dispatcher] Worker started");
 process.on("SIGTERM", async () => {
   console.log("[email-dispatcher] SIGTERM received, shutting down gracefully...");
   await worker.close();
-  await connection.quit();
   for (const transport of transportCache.values()) {
     try { await transport.close(); } catch {}
   }
@@ -188,7 +177,6 @@ process.on("SIGTERM", async () => {
 process.on("SIGINT", async () => {
   console.log("[email-dispatcher] SIGINT received, shutting down gracefully...");
   await worker.close();
-  await connection.quit();
   for (const transport of transportCache.values()) {
     try { await transport.close(); } catch {}
   }

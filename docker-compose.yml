@@ -300,7 +300,7 @@ services:
       timeout: 10s
       retries: 3
 
-  volumes:
-    postgres_data:
-    redis_data:
-    backup_data:
+volumes:
+  postgres_data:
+  redis_data:
+  backup_data:

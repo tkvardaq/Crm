@@ -11,11 +11,14 @@ COPY packages/scraper/package.json ./packages/scraper/
 COPY packages/enrichment/package.json ./packages/enrichment/
 COPY packages/ai-client/package.json ./packages/ai-client/
 COPY apps/web/package.json ./apps/web/
-RUN npm install --omit=dev
+COPY packages/database/schema.prisma ./packages/database/schema.prisma
+RUN npm install --omit=dev --force
+RUN npm install @next/swc-linux-x64-musl --force --no-save
 
 FROM base AS builder
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+RUN npm install --force
 RUN npx prisma generate --schema=packages/database/schema.prisma
 RUN npm run build --workspace=@crm/shared
 RUN npm run build --workspace=@crm/database

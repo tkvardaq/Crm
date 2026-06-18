@@ -1,0 +1,318 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: crm-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "2.0"
+    restart: unless-stopped
+    networks:
+      - crm-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: crm-redis
+    command: >
+      redis-server
+      --appendonly yes
+      --appendfsync everysec
+      --requirepass ${REDIS_PASSWORD}
+      --maxmemory 512mb
+      --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$REDIS_PASSWORD\" ping || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1.0"
+    restart: unless-stopped
+    networks:
+      - crm-network
+
+  backup:
+    image: pgvector/pgvector:pg16
+    container_name: crm-backup
+    environment:
+      PGHOST: postgres
+      PGUSER: ${POSTGRES_USER}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PGDATABASE: ${POSTGRES_DB}
+    volumes:
+      - backup_data:/backups
+    entrypoint: >
+      sh -c "while true; do
+        F=/backups/crm_backup_$$(date +%Y%m%d_%H%M%S).dump;
+        if pg_dump -Fc -f $$F; then
+          echo \"[backup] OK: $$F\"; find /backups -name '*.dump' -mtime +7 -delete;
+        else echo \"[backup] FAILED at $$(date)\" >&2; exit 1; fi;
+        sleep 86400;
+      done"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: on-failure
+    networks:
+      - crm-network
+
+  web:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER}/crm-web:${IMAGE_TAG}
+    container_name: crm-web
+    env_file: .env.production
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: "2.0"
+    restart: unless-stopped
+    networks:
+      - crm-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.web.rule=Host(`${DOMAIN}`)"
+      - "traefik.http.routers.web.tls=true"
+      - "traefik.http.routers.web.tls.certresolver=letsencrypt"
+      - "traefik.http.services.web.loadbalancer.server.port=3000"
+
+  email-dispatcher:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER}/crm-email-dispatcher:${IMAGE_TAG}
+    container_name: crm-email-dispatcher
+    env_file: .env.production
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1.0"
+    restart: unless-stopped
+    networks:
+      - crm-network
+
+  imap-sync:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER}/crm-imap-sync:${IMAGE_TAG}
+    container_name: crm crm crm-imap-sync
+    env_file: .env.production
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.5"
+    restart: unless-stopped
+    networks:
+      - crm-network
+
+  dns-checker:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER}/crm-dns-checker:${IMAGE_TAG}
+    container_name: crm-dns-checker
+    env_file: .env.production
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: "0.25"
+    restart: unless-stopped
+    networks:
+      - crm-network
+
+  decay-tracker:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER}/crm-decay-tracker:${IMAGE_TAG}
+    container_name: crm-decay-tracker
+    env_file: .env.production
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: "0.25"
+    restart: unless-stopped
+    networks:
+      - crm-network
+
+  warmup:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER}/crm-warmup:${IMAGE_TAG}
+    container_name: crm-warmup
+    env_file: .env.production
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: "0.25"
+    restart: unless-stopped
+    networks:
+      - crm-network
+
+  ai-worker:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER}/crm-ai-worker:${IMAGE_TAG}
+    container_name: crm-ai-worker
+    env_file: .env.production
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1.0"
+    restart: unless-stopped
+    networks:
+      - crm-network
+
+  scraper-worker:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER}/crm-scraper-worker:${IMAGE_TAG}
+    container_name: crm-scraper-worker
+    env_file: .env.production
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1.0"
+    restart: unless-stopped
+    networks:
+      - crm-network
+
+  enrichment-worker:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER}/crm-enrichment-worker:${IMAGE_TAG}
+    container_name: crm-enrichment-worker
+    env_file: .env.production
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1.0"
+    restart: unless-stopped
+    networks:
+      - crm-network
+
+  bull-board:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER}/crm-bull-board:${IMAGE_TAG}
+    container_name: crm-bull-board
+    env_file: .env.production
+    depends_on:
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: "0.25"
+    restart: unless-stopped
+    networks:
+      - crm-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.bull-board.rule=Host(`${BULL_BOARD_DOMAIN}`)"
+      - "traefik.http.routers.bull-board.tls=true"
+      - "traefik.http.routers.bull-board.tls.certresolver=letsencrypt"
+      - "traefik.http.services.bull-board.loadbalancer.server.port=3010"
+
+  traefik:
+    image: traefik:v3.0
+    container_name: crm-traefik
+    command:
+      - "--api.dashboard=true"
+      - "--api.insecure=false"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+      - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+      - "letsencrypt_data:/letsencrypt"
+    networks:
+      - crm-network
+    restart: unless-stopped
+
+  migrate:
+    image: ghcr.io/${GITHUB_REPOSITORY_OWNER}/crm-web:${IMAGE_TAG}
+    container_name: crm-migrate
+    env_file: .env.production
+    command: npx prisma migrate deploy --schema=packages/database/schema.prisma
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - crm-network
+    deploy:
+      restart_policy:
+        condition: on-failure
+
+networks:
+  crm-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  backup_data:
+  letsencrypt_data:

@@ -56,15 +56,12 @@ services:
       - ./workers:/app/workers
       - ./package.json:/app/package.json
       - ./package-lock.json:/app/package-lock.json
-      - /app/node_modules
-      - /app/apps/web/node_modules
-      - /app/apps/web/.next
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
-    command: npx next dev --port 3000 --hostname 0.0.0.0
+    command: /app/node_modules/.bin/next dev --port 3000 --hostname 0.0.0.0
     restart: unless-stopped
 
   leadstealth:

@@ -4,7 +4,6 @@ import React, { useState, useEffect } from "react";
 
 type ScrapeResponse = {
   scrapeJobId: string;
-  leadsStealthJobId: string;
 };
 
 type JobStatus = {
@@ -16,9 +15,8 @@ type JobStatus = {
 export default function LeadDiscovery() {
   const [query, setQuery] = useState("");
   const [location, setLocation] = useState("");
-  const [jobInfo, setJobInfo] = useState<ScrapeResponse | null>(null);
+  const [scrapeJobId, setScrapeJobId] = useState<string | null>(null);
   const [status, setStatus] = useState<JobStatus | null>(null);
-  const [importResult, setImportResult] = useState<{ imported: number; skipped: number } | null>(null);
   const [loading, setLoading] = useState(false);
 
   const startScrape = async () => {
@@ -35,19 +33,17 @@ export default function LeadDiscovery() {
         alert("Failed to start scrape: " + JSON.stringify(data));
         return;
       }
-      setJobInfo(data);
+      setScrapeJobId(data.scrapeJobId);
       setStatus(null);
-      setImportResult(null);
     } finally {
       setLoading(false);
     }
   };
 
-  // Poll job status
   useEffect(() => {
-    if (!jobInfo) return;
+    if (!scrapeJobId) return;
     const interval = setInterval(async () => {
-      const res = await fetch(`/api/leadstealth/scrape/${jobInfo.leadsStealthJobId}`);
+      const res = await fetch(`/api/leadstealth/scrape/${scrapeJobId}`);
       if (!res.ok) {
         setStatus({ status: "error", leads_found: 0, error: "Failed to fetch status" });
         clearInterval(interval);
@@ -55,55 +51,58 @@ export default function LeadDiscovery() {
       }
       const data: JobStatus = await res.json();
       setStatus(data);
-      if (data.status !== "running") clearInterval(interval);
-    }, 5000);
+      if (data.status !== "running" && data.status !== "pending") clearInterval(interval);
+    }, 3000);
     return () => clearInterval(interval);
-  }, [jobInfo]);
-
-  const importLeads = async () => {
-    const res = await fetch("/api/leadstealth/import", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ source: undefined, limit: 500 }) });
-    const data = await res.json();
-    setImportResult({ imported: data.imported, skipped: data.skipped });
-  };
+  }, [scrapeJobId]);
 
   return (
-    <div className="p-4">
-      <h2 className="text-xl font-bold mb-4">Lead Discovery</h2>
-      <div className="mb-4 flex flex-wrap gap-2">
+    <div className="p-6 max-w-4xl">
+      <h2 className="text-2xl font-bold mb-2">Lead Discovery</h2>
+      <p className="text-gray-500 mb-4">Search for businesses by type and location. The scraper will find business websites and extract contact information (emails, phone numbers).</p>
+
+      <div className="mb-6 flex flex-wrap gap-3">
         <input
           type="text"
-          placeholder="Query (e.g., plumbers)"
+          placeholder="Business type (e.g., plumber, dentist, restaurant)"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          className="border p-2"
+          className="border rounded px-3 py-2 flex-1 min-w-[200px]"
         />
         <input
           type="text"
-          placeholder="Location (e.g., Austin TX)"
+          placeholder="Location (e.g., Austin TX, New York)"
           value={location}
           onChange={(e) => setLocation(e.target.value)}
-          className="border p-2"
+          className="border rounded px-3 py-2 flex-1 min-w-[200px]"
         />
-        <button onClick={startScrape} disabled={loading} className="bg-blue-500 text-white px-3 py-1 rounded disabled:opacity-50">
+        <button
+          onClick={startScrape}
+          disabled={loading || !query || !location}
+          className="bg-blue-600 text-white px-6 py-2 rounded disabled:opacity-50 hover:bg-blue-700"
+        >
           {loading ? "Starting..." : "Start Scrape"}
         </button>
       </div>
+
       {status && (
-        <div className="mb-4 p-3 bg-gray-100 rounded">
-          <p>Status: <strong>{status.status}</strong></p>
-          <p>Leads found: <strong>{status.leads_found}</strong></p>
-          {status.error && <p className="text-red-600">Error: {status.error}</p>}
-        </div>
-      )}
-      {jobInfo && status && status.status !== "running" && !status.error && (
-        <button onClick={importLeads} className="bg-green-600 text-white px-3 py-1 rounded">
-          Import Leads
-        </button>
-      )}
-      {importResult && (
-        <div className="mt-4 p-3 bg-green-100 rounded">
-          <p>Imported: <strong>{importResult.imported}</strong></p>
-          <p>Skipped (existing): <strong>{importResult.skipped}</strong></p>
+        <div className={`p-4 rounded mb-4 ${status.status === 'completed' ? 'bg-green-50 border border-green-200' : status.status === 'failed' ? 'bg-red-50 border border-red-200' : 'bg-blue-50 border border-blue-200'}`}>
+          <div className="flex items-center gap-3">
+            {status.status === 'running' && <div className="animate-spin w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full" />}
+            <div>
+              <p className="font-semibold">
+                Status: <span className={status.status === 'completed' ? 'text-green-700' : status.status === 'failed' ? 'text-red-700' : 'text-blue-700'}>{status.status}</span>
+              </p>
+              <p>Leads found: <strong>{status.leads_found}</strong></p>
+              {status.error && <p className="text-red-600 mt-1">Error: {status.error}</p>}
+              {status.status === 'completed' && status.leads_found > 0 && (
+                <p className="text-green-700 mt-1">Found {status.leads_found} leads! Check your Leads list.</p>
+              )}
+              {status.status === 'completed' && status.leads_found === 0 && (
+                <p className="text-amber-600 mt-1">No leads found. Try a different search term or location.</p>
+              )}
+            </div>
+          </div>
         </div>
       )}
     </div>

@@ -56,3 +56,7 @@ def get_leads(limit: int = 100, source: str | None = None):
     # Return dummy leads
     dummy = [{"email": f"test{i}@example.com", "name": f"Test User {i}"} for i in range(1, limit + 1)]
     return {"data": dummy, "total": limit}
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8001)
