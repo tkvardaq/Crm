@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
 import { rateLimitAuth, rateLimitApi } from "@/lib/rate-limit-edge";
-import { createRequestLogger } from "@crm/shared";
 
 const CSRF_SAFE_METHODS = ["GET", "HEAD", "OPTIONS"];
 
@@ -87,8 +86,17 @@ export async function middleware(request: NextRequest) {
   const response = NextResponse.next();
   response.headers.set('x-request-id', requestId);
   
-  const logger = createRequestLogger(requestId, token.id as string, token.workspaceId as string);
-  logger.info({ method: request.method, pathname, ip, userAgent: request.headers.get('user-agent') }, 'Request received');
+  console.log(JSON.stringify({
+    level: "info",
+    requestId,
+    userId: token.id,
+    workspaceId: token.workspaceId,
+    method: request.method,
+    pathname,
+    ip,
+    userAgent: request.headers.get('user-agent'),
+    msg: 'Request received'
+  }));
 
   return response;
 }
