@@ -53,3 +53,26 @@ prisma/migrations/.migration_lock.toml
 *.pem
 .vercel
 .netlify
+
+# Local dev artifacts
+*.db
+*.diff
+dev.log
+dev.err
+dev.out
+start.bat
+start-dev.bat
+changes.diff
+
+# Editor configs
+.obsidian/
+
+# Internal docs
+complete-review-and-integration.md
+project-template/
+Untitled.*
+*.canvas
+*.base
+
+# Test scripts
+test-app.*
