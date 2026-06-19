@@ -11,7 +11,7 @@ const nextConfig = {
     '@crm/ai-client',
   ],
   experimental: {
-    serverComponentsExternalPackages: ['@prisma/client', '@crm/database'],
+    serverComponentsExternalPackages: ['@prisma/client', '@crm/database', 'ioredis', 'bullmq', 'cheerio', 'https-proxy-agent'],
   },
 };
 
