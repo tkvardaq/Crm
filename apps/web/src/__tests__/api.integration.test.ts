@@ -12,7 +12,6 @@ beforeAll(async () => {
   process.env.DATABASE_URL = TEST_DB_URL;
   process.env.REDIS_URL = TEST_REDIS_URL;
   process.env.FERNET_KEY = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
-  def';
   process.env.ENCRYPTION_KEY = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
   process.env.NEXTAUTH_SECRET = 'test-secret-min-32-chars-long';
   process.env.CRON_SECRET = 'test-cron-secret';
